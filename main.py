@@ -1,5 +1,19 @@
 import os
 import json
+import sqlite3
+
+connection = sqlite3.connect("accounts_data.db")
+cursor = connection.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS accounts (
+account_no VARCHAR(10),
+holder_name VARCHAR(10),
+phone_no VARCHAR(10),
+pin INT,
+balance INT
+)""")
+# connection.close()
 
 path = os.path.dirname(__file__)
 json_file = os.path.join(path, "accounts_data.json")
@@ -13,27 +27,42 @@ def dump_accounts():
 
 temp_accounts = load_accounts()
 
-def add_account(name, phone_no, pin):
-    temp_accounts[phone_no] = {
-        "holder_name" : name,
-        "phone_no" : phone_no,
-        "pin" : pin,
-        "balance" : 0
-    }
-    dump_accounts()
+def add_account(account_no, name, phone_no, pin, balance):
+
+    #SQL =================================
+    cursor.execute("""
+    INSERT INTO accounts VALUES (?, ?, ?, ?, ?)
+    """, (account_no, name, phone_no, pin, balance))
+    connection.commit()
+
     print(f"Account Created Successfully! \n Your Account no is {phone_no} and Pin is {pin}\n Remember these information to access your account.\n")
     return
 
 def view_details(account_no):
+    cursor.execute("""
+        SELECT * FROM accounts
+        WHERE account_no = ?
+    """, (account_no,))
+    result = cursor.fetchone()
+
+    if result is None:
+        print('Account not found.')
+        return
+
     print(f'''
 < === Account Details for Acount No : {account_no} === >
-    Name = {temp_accounts[account_no]["holder_name"]}
-    Phone No = {temp_accounts[account_no]["phone_no"]}
-    Pin = {temp_accounts[account_no]["pin"]}
-    Balance = {temp_accounts[account_no]["balance"]}''')
+    Name = {result[1]}
+    Phone No = {result[2]}
+    Pin = {result[3]}
+    Balance = {result[4]}''')
 
 def check_balance(account_no):
-    print(f"Balance : {temp_accounts[account_no]["balance"]}")
+    cursor.execute("""
+        SELECT balance FROM accounts
+        WHERE account_no = ?
+    """, (account_no,))
+    result = cursor.fetchone()
+    print(f"Balance : {result[0]}")
 
 def deposit_money(account_no):
     try:
@@ -44,10 +73,15 @@ def deposit_money(account_no):
     if amount <= 0:
         print("Can,t deposit 0 amount!")
         return
-    temp_accounts[account_no]["balance"] += amount
-    dump_accounts()
+    #SQL ================================
+    cursor.execute("""
+        UPDATE accounts
+        SET balance = balance + ?
+        WHERE account_no = ?
+    """, (amount, account_no))
+
     print(f" Amount {amount} Deposited into {account_no} successfully! ")
-    
+
 def withdraw_money(account_no):
     try:
         amount = int(input("Enter the amount you want to withdraw : "))
@@ -57,11 +91,22 @@ def withdraw_money(account_no):
     if amount <= 0:
         print("Can,t withdraw 0 amount!")
         return
-    if amount > temp_accounts[account_no]["balance"]:
-            print("aukaat me ! itna to tere pass hi nahi hai 🤷‍♂️")
+
+    cursor.execute("""
+        SELECT balance FROM accounts
+        WHERE account_no = ?
+    """, (account_no,))
+    result = cursor.fetchone()
+    if amount > result[0]:
+            print("aukaat me ! itna to tere pass nahi hai 🤷‍♂️")
             return
-    temp_accounts[account_no]["balance"] -= amount
-    dump_accounts()
+    #SQL =============================
+    cursor.execute("""
+            UPDATE accounts
+            SET balance = balance - ?
+            WHERE account_no = ?
+        """, (amount, account_no))
+
     print(f" Amount {amount} Withdrawn from {account_no} successfully!\n\tHere is your Cash 💸💸")
 
 def transfer_money(account_no):
@@ -72,7 +117,11 @@ def transfer_money(account_no):
     if len(str(receivers_account_no)) != 10:
         print("Account no should contain 10 digits")
         return
-    if receivers_account_no not in temp_accounts:
+    cursor.execute("""
+        SELECT account_no FROM accounts
+    """)
+    result = cursor.fetchone()
+    if receivers_account_no not in result:
         print(f"Account {receivers_account_no} not fount!")
         return
     if receivers_account_no == account_no:
@@ -80,7 +129,12 @@ def transfer_money(account_no):
         return
     try:
         amount = int(input(f"Enter the amount you want to transfer to {receivers_account_no} : "))
-        if amount > temp_accounts[account_no]["balance"]:
+        cursor.execute("""
+            SELECT balance FROM accounts
+            WHERE account_no = ?
+        """, (account_no,))
+        result = cursor.fetchone()
+        if amount > result[0]:
             print("aukaat me ! itna to tere pass hi nahi hai 🤷‍♂️")
             return
     except ValueError:
@@ -89,9 +143,20 @@ def transfer_money(account_no):
     if amount <= 0:
         print("Can,t transfer 0 amount!")
         return
-    temp_accounts[account_no]["balance"] -= amount
-    temp_accounts[receivers_account_no]["balance"] += amount
-    dump_accounts()
+
+    #SQL ==========================================>
+    cursor.execute("""
+            UPDATE accounts
+            SET balance = balance + ?
+            WHERE account_no = ?
+        """, (amount, receivers_account_no))
+
+    cursor.execute("""
+            UPDATE accounts
+            SET balance = balance - ?
+            WHERE account_no = ?
+        """, (amount, account_no))
+
     print(f" Amount {amount} successfully transfered from {account_no} to {receivers_account_no}")
 
 def login():
@@ -104,8 +169,12 @@ def login():
             print("Account_no should be of 10 digits!")
             continue
         break
-    
-    if account_no not in temp_accounts:
+    cursor.execute("""
+        SELECT account_no FROM accounts
+        WHERE account_no = ?
+    """, (account_no,))
+    result = cursor.fetchone()
+    if result is None:
         print("account no not registered first create an account!")
         return
 
@@ -118,8 +187,12 @@ def login():
             print("Pin should contain only 4 digits!")
             continue
         break
-            
-    if pin == temp_accounts[account_no]["pin"]:
+    cursor.execute("""
+        SELECT pin FROM accounts
+        WHERE account_no = ?
+    """, (account_no,))
+    result = cursor.fetchone()
+    if int(pin) == result[0]:
         access(account_no)
     else:
         print("Wronge Pin!\n contect our Customer support if you forgoten your pin\n")
@@ -143,7 +216,12 @@ def create_account():
         if len(phone_no) != 10:
             print("Phone no should be of 10 digits")
             continue
-        if phone_no in temp_accounts:
+        cursor.execute("""
+            SELECT phone_no FROM accounts
+            WHERE account_no = ?
+        """, (phone_no,))
+        result = cursor.fetchone()
+        if result is not None:
             print("This Phone no is alredy linked to an account!")
             continue   
         break
@@ -156,8 +234,9 @@ def create_account():
             print("Pin should be of 4 digits")
             continue
         break
-
-    add_account(name, phone_no, pin)
+    account_no = phone_no
+    balance = 500
+    add_account(account_no, name, phone_no, pin, balance)
  
 def user():
     while True:
@@ -177,9 +256,14 @@ def user():
             create_account()
 
 def access(account_no):
+    cursor.execute("""
+        SELECT holder_name FROM accounts
+        WHERE account_no = ?
+    """, (account_no,))
+    result = cursor.fetchone()
     while True:
         user_choice2 = int(input(f'''
-< == WELCOME {temp_accounts[account_no]["holder_name"]}! == >\n
+< == WELCOME {result[0]}! == >\n
     1. View details
     2. Check Balance
     3. deposit Money
