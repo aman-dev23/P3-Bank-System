@@ -1,6 +1,7 @@
 import os
 import json
 import sqlite3
+import bcrypt
 
 connection = sqlite3.connect("accounts_data.db")
 cursor = connection.cursor()
@@ -10,22 +11,23 @@ CREATE TABLE IF NOT EXISTS accounts (
 account_no VARCHAR(10),
 holder_name VARCHAR(10),
 phone_no VARCHAR(10),
-pin INT,
+pin TEXT,
 balance INT
 )""")
 # connection.close()
 
-path = os.path.dirname(__file__)
-json_file = os.path.join(path, "accounts_data.json")
+def hasg_pin(pin):
+    return bcrypt.hashpw(
+        pin.encode(),
+        bcrypt.gensalt()
+    ).decode()
 
-def load_accounts():
-    with open(json_file, "r") as file:
-        return json.load(file)
-def dump_accounts():
-    with open(json_file, "w") as file:
-        json.dump(temp_accounts, file, indent=4)
+def check_pin(pin, stored_hash):
+    return bcrypt.checkpw(
+        pin.encode(),
+        stored_hash.encode()
+    )
 
-temp_accounts = load_accounts()
 
 def add_account(account_no, name, phone_no, pin, balance):
 
@@ -35,7 +37,7 @@ def add_account(account_no, name, phone_no, pin, balance):
     """, (account_no, name, phone_no, pin, balance))
     connection.commit()
 
-    print(f"Account Created Successfully! \n Your Account no is {phone_no} and Pin is {pin}\n Remember these information to access your account.\n")
+    print(f"Account Created Successfully! \n Your Account no is {phone_no} \n Remember these information to access your account.\n")
     return
 
 def view_details(account_no):
@@ -53,7 +55,6 @@ def view_details(account_no):
 < === Account Details for Acount No : {account_no} === >
     Name = {result[1]}
     Phone No = {result[2]}
-    Pin = {result[3]}
     Balance = {result[4]}''')
 
 def check_balance(account_no):
@@ -192,7 +193,7 @@ def login():
         WHERE account_no = ?
     """, (account_no,))
     result = cursor.fetchone()
-    if int(pin) == result[0]:
+    if check_pin(pin, result[0]):
         access(account_no)
     else:
         print("Wronge Pin!\n contect our Customer support if you forgoten your pin\n")
@@ -234,6 +235,7 @@ def create_account():
             print("Pin should be of 4 digits")
             continue
         break
+    pin = hasg_pin(pin)
     account_no = phone_no
     balance = 500
     add_account(account_no, name, phone_no, pin, balance)
